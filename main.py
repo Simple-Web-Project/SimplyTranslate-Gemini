@@ -10,6 +10,13 @@ page_header = """```
            /_/     /___/                                        
 ```"""
 
+page_footer = """
+
+SimplyTranslate is part of the Simple Web project.
+Message the devs on our IRC (#simple-web on freenode)
+=> https://git.sr.ht/~metalune/simplytranslate_gemini Source code for this gemini capsule
+"""
+
 app = JetforceApplication()
 
 def get_supported_languages(engine):
@@ -131,6 +138,7 @@ def index(request, engine="google", rest=""):
         lines.append(translation)
 
 
+    lines.append(page_footer)
     return Response(Status.SUCCESS, "text/gemini", '\n'.join(lines))
 
 
