@@ -1,5 +1,6 @@
 from jetforce import GeminiServer, JetforceApplication, Response, Status
-from simplytranslate_engines import (googletranslate, libretranslate)
+from simplytranslate_engines.googletranslate import GoogleTranslateEngine
+from simplytranslate_engines.libretranslate import LibreTranslateEngine
 import urllib.parse
 
 page_header = """```
@@ -17,18 +18,17 @@ Message the devs on our IRC (#simple-web on freenode)
 => https://git.sr.ht/~metalune/simplytranslate_gemini Source code for this gemini capsule
 """
 
+google_translate_engine = GoogleTranslateEngine()
+
+engines = [google_translate_engine, LibreTranslateEngine()]
+
 app = JetforceApplication()
 
-def get_supported_languages(engine):
-    if engine == "google":
-        return googletranslate.supported_languages
-    elif engine == "libre":
-        return libretranslate.supported_languages
-
-
-def to_lang_code(lang, supported_languages):
+def to_lang_code(lang, engine):
     if lang == "Autodetect" or lang == "auto":
         return "auto"
+
+    supported_languages = engine.get_supported_languages()
 
     for key in supported_languages.keys():  
         if key.lower() == lang.lower():
@@ -40,9 +40,11 @@ def to_lang_code(lang, supported_languages):
 
     return None
 
-def to_lang_name(code, supported_languages):
+def to_lang_name(code, engine):
     if code == "auto":
         return "Autodetect"
+
+    supported_languages = engine.get_supported_languages()
 
     for key in supported_languages.keys():
         if supported_languages[key] == code:
@@ -52,12 +54,13 @@ def to_lang_name(code, supported_languages):
 
 
 
-
+def get_engine(engine_name):
+    return next((engine for engine in engines if engine.name == engine_name), google_translate_engine)
 
 @app.route("")
-@app.route("/(?P<engine>google|libre)")
-@app.route("/(?P<engine>google|libre)/(?P<rest>.*)")
-def index(request, engine="google", rest=""):
+@app.route("/(?P<engine_name>google|libre)")
+@app.route("/(?P<engine_name>google|libre)/(?P<rest>.*)")
+def index(request, engine_name="google", rest=""):
     fr = "auto"
     to = "en"
     text = ""
@@ -71,11 +74,12 @@ def index(request, engine="google", rest=""):
             if len(rest) > 2:
                 text = "/".join(rest[2:])
 
+    engine = get_engine(engine_name)
 
     escaped_text = urllib.parse.quote(text)
-    supported_languages = get_supported_languages(engine)
-    fr_name = to_lang_name(fr, supported_languages)
-    to_name = to_lang_name(to, supported_languages)
+    supported_languages = engine.get_supported_languages()
+    fr_name = to_lang_name(fr, engine)
+    to_name = to_lang_name(to, engine)
 
     if fr_name == None or to_name == None:
         not_found = ""
@@ -84,7 +88,7 @@ def index(request, engine="google", rest=""):
         if to_name == None:
             not_found += f" and '{to}'"
         return Response(Status.NOT_FOUND, f"Could not find {not_found}")
-    
+
     engine_text_google = f"=> /google/{fr}/{to}/{escaped_text} "
     engine_text_libre = f"=> /libre/{fr}/{to}/{escaped_text} "
     if engine == "google":
@@ -95,7 +99,7 @@ def index(request, engine="google", rest=""):
         engine_text_libre += "+ Libre"
 
     translate = False
-    translate_line = f"=> /set_text/{engine}/{fr}/{to} "
+    translate_line = f"=> /set_text/{engine_name}/{fr}/{to} "
     if not text.strip(): # Check if text is empty
         translate_line += "Enter Text to Translate"
     else:
@@ -110,75 +114,73 @@ def index(request, engine="google", rest=""):
         "Translation Engine:",
         engine_text_google,
         engine_text_libre,
-        f"=> /supported_languages/{engine} List of supported languages",
+        f"=> /supported_languages/{engine_name} List of supported languages",
         "",
         "Languages:",
-        f"=> /set/from/{engine}/{to}/{escaped_text} From: {fr_name}",
-        f"=> /set/to/{engine}/{fr}/{escaped_text} To: {to_name}",
+        f"=> /set/from/{engine_name}/{to}/{escaped_text} From: {fr_name}",
+        f"=> /set/to/{engine_name}/{fr}/{escaped_text} To: {to_name}",
         "",
         "Text:",
         translate_line,
     ]
 
     if translate:
-        if engine == "google":
-            translation = googletranslate.translate(
-                text,
-                to_language=to,
-                from_language=fr,
-            )
-        elif engine == "libre":
-            translation = libretranslate.translate(
-                text,
-                to_language=to,
-                from_language=fr,
-            )
         lines.append("")
         lines.append("Translation:")
-        lines.append(translation)
+        lines.append(
+            engine.translate(
+                text,
+                to_language=to,
+                from_language=fr,
+            )
+        )
 
 
     lines.append(page_footer)
     return Response(Status.SUCCESS, "text/gemini", '\n'.join(lines))
 
 
-@app.route("/set/(?P<what>from|to)/(?P<engine>\S+)/(?P<other>\S+)", strict_trailing_slash=False)
-@app.route("/set/(?P<what>from|to)/(?P<engine>\S+)/(?P<other>\S+)/(?P<text>.*)")
-def set(request, what, engine, other, text=""):
+@app.route("/set/(?P<what>from|to)/(?P<engine_name>\S+)/(?P<other>\S+)", strict_trailing_slash=False)
+@app.route("/set/(?P<what>from|to)/(?P<engine_name>\S+)/(?P<other>\S+)/(?P<text>.*)")
+def set(request, what, engine_name, other, text=""):
+    engine = get_engine(engine_name)
 
     if request.query:
         lang = request.query
 
         # check if the language is available
-        lang_code = to_lang_code(lang, get_supported_languages(engine))
+        lang_code = to_lang_code(lang, engine)
         if lang_code == None:
             return Response(Status.INPUT, f"Language '{lang}' not found, please try again") 
 
         if what == "from":
-            return Response(Status.REDIRECT_TEMPORARY, f"/{engine}/{lang_code}/{other}/{text}/")
+            return Response(Status.REDIRECT_TEMPORARY, f"/{engine_name}/{lang_code}/{other}/{text}/")
         elif what == "to":
-            return Response(Status.REDIRECT_TEMPORARY, f"/{engine}/{other}/{lang_code}/{text}/")
+            return Response(Status.REDIRECT_TEMPORARY, f"/{engine_name}/{other}/{lang_code}/{text}/")
 
     return Response(Status.INPUT, "Enter the language (either language code or full name)")
 
-@app.route("/set_text/(?P<engine>\S+)/(?P<fr>\S+)/(?P<to>\S+)")
-def set_text(request, engine, fr, to):
+@app.route("/set_text/(?P<engine_name>\S+)/(?P<fr>\S+)/(?P<to>\S+)")
+def set_text(request, engine_name, fr, to):
     print("to:", to)
     if request.query:
         text = request.query
-        return Response(Status.REDIRECT_TEMPORARY, f"/{engine}/{fr}/{to}/{text}")
+        return Response(Status.REDIRECT_TEMPORARY, f"/{engine_name}/{fr}/{to}/{text}")
 
     return Response(Status.INPUT, "Enter the text you want to translate")
 
-@app.route("/supported_languages/(?P<engine>google|libre)")
-def show_supported_languages(request, engine):
-    supported_languages = get_supported_languages(engine)
+@app.route("/supported_languages/(?P<engine_name>google|libre)")
+def show_supported_languages(request, engine_name):
+    engine = get_engine(engine_name)
+
     lines = [
         page_header,
         "",
-        f"# Supported languages for {engine}",
+        f"# Supported languages for {engine_name}",
         "",
     ]
+
+    supported_languages = engine.get_supported_languages()
 
     for key in supported_languages.keys():
         code = supported_languages[key]
