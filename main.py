@@ -91,10 +91,10 @@ def index(request, engine_name="google", rest=""):
 
     engine_text_google = f"=> /google/{fr}/{to}/{escaped_text} "
     engine_text_libre = f"=> /libre/{fr}/{to}/{escaped_text} "
-    if engine == "google":
+    if engine_name == "google":
         engine_text_google += "+ Google"
         engine_text_libre += "Libre"
-    elif engine == "libre":
+    elif engine_name == "libre":
         engine_text_google += "Google"
         engine_text_libre += "+ Libre"
 
