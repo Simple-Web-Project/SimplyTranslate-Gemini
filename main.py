@@ -14,7 +14,7 @@ page_header = """```
 page_footer = """
 
 SimplyTranslate is part of the Simple Web project.
-Message the devs on our IRC (#simple-web on freenode)
+Message the devs on our IRC (#simple-web on irc.libera.chat)
 => https://git.sr.ht/~metalune/simplytranslate_gemini Source code for this gemini capsule
 """
 
