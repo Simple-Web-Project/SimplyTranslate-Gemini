@@ -99,6 +99,10 @@ def index(request, engine_name=engine_names[0], rest=""):
     add_engine_line("libre", "Libre")
     add_engine_line("google", "Google")
 
+    # if there is only one engine, just don't explain any engine options
+    if len(engine_lines) == 1:
+        engine_lines = []
+
     translate = False
     translate_line = f"=> /set_text/{engine_name}/{fr}/{to} "
     if not text.strip(): # Check if text is empty
