@@ -1,4 +1,5 @@
 from jetforce import GeminiServer, JetforceApplication, Response, Status
+from configparser import ConfigParser
 
 from simplytranslate_engines.googletranslate import GoogleTranslateEngine
 from simplytranslate_engines.libretranslate import LibreTranslateEngine
@@ -21,16 +22,41 @@ Message the devs on our IRC (#simple-web on irc.libera.chat)
 => https://git.sr.ht/~metalune/simplytranslate_gemini Source code for this gemini capsule
 """
 
-google_translate_engine = GoogleTranslateEngine()
+config = ConfigParser()
 
-engines = [google_translate_engine, LibreTranslateEngine()]
+config.read(["/etc/simplytranslate/shared.conf", "/etc/simplytranslate/gemini.conf"])
+
+engines = []
+
+if config.getboolean('google', 'Enabled', fallback=True):
+    engines.append(GoogleTranslateEngine())
+
+libretranslate_enabled = config.getboolean('libretranslate', 'Enabled', fallback=None)
+
+if libretranslate_enabled is None:
+    print("LibreTranslate is disabled by default; if you did not mean this, please edit the config file")
+
+if libretranslate_enabled:
+    engines.append(
+        LibreTranslateEngine(
+            config['libretranslate']['Instance'],
+            # `ApiKey` is not required, so use `get` to get `None` as fallback.
+            config['libretranslate'].get('ApiKey'),
+        )
+    )
+
+if not engines:
+    raise Exception('All translation engines are disabled')
+
+engine_names = tuple(engine.name for engine in engines)
+joined_engine_names = "|".join(engine_names)
 
 app = JetforceApplication()
 
 @app.route("")
-@app.route("/(?P<engine_name>google|libre)")
-@app.route("/(?P<engine_name>google|libre)/(?P<rest>.*)")
-def index(request, engine_name="google", rest=""):
+@app.route("/(?P<engine_name>{})".format(joined_engine_names))
+@app.route("/(?P<engine_name>{})/(?P<rest>.*)".format(joined_engine_names))
+def index(request, engine_name=engine_names[0], rest=""):
     fr = "auto"
     to = "en"
     text = ""
@@ -44,7 +70,7 @@ def index(request, engine_name="google", rest=""):
             if len(rest) > 2:
                 text = "/".join(rest[2:])
 
-    engine = get_engine(engine_name, engines, google_translate_engine)
+    engine = get_engine(engine_name, engines, engines[0])
 
     escaped_text = urllib.parse.quote(text)
     supported_languages = engine.get_supported_languages()
@@ -59,14 +85,19 @@ def index(request, engine_name="google", rest=""):
             not_found += f" and '{to}'"
         return Response(Status.NOT_FOUND, f"Could not find {not_found}")
 
-    engine_text_google = f"=> /google/{fr}/{to}/{escaped_text} "
-    engine_text_libre = f"=> /libre/{fr}/{to}/{escaped_text} "
-    if engine_name == "google":
-        engine_text_google += "+ Google"
-        engine_text_libre += "Libre"
-    elif engine_name == "libre":
-        engine_text_google += "Google"
-        engine_text_libre += "+ Libre"
+    engine_lines = []
+
+    def add_engine_line(name, display_name):
+        if name in engine_names:
+            string = f"=> /{name}/{fr}/{to}/{escaped_text} "
+            if engine_name == name:
+                string += f"+ {display_name}"
+            else:
+                string += display_name
+            engine_lines.append(string)
+
+    add_engine_line("libre", "Libre")
+    add_engine_line("google", "Google")
 
     translate = False
     translate_line = f"=> /set_text/{engine_name}/{fr}/{to} "
@@ -82,8 +113,7 @@ def index(request, engine_name="google", rest=""):
         "# Simply Translate",
         "",
         "Translation Engine:",
-        engine_text_google,
-        engine_text_libre,
+        *engine_lines,
         f"=> /supported_languages/{engine_name} List of supported languages",
         "",
         "Languages:",
@@ -110,10 +140,10 @@ def index(request, engine_name="google", rest=""):
     return Response(Status.SUCCESS, "text/gemini", '\n'.join(lines))
 
 
-@app.route("/set/(?P<what>from|to)/(?P<engine_name>\S+)/(?P<other>\S+)", strict_trailing_slash=False)
-@app.route("/set/(?P<what>from|to)/(?P<engine_name>\S+)/(?P<other>\S+)/(?P<text>.*)")
+@app.route("/set/(?P<what>from|to)/(?P<engine_name>{})/(?P<other>\S+)".format(joined_engine_names), strict_trailing_slash=False)
+@app.route("/set/(?P<what>from|to)/(?P<engine_name>{})/(?P<other>\S+)/(?P<text>.*)".format(joined_engine_names))
 def set(request, what, engine_name, other, text=""):
-    engine = get_engine(engine_name, engines, google_translate_engine)
+    engine = get_engine(engine_name, engines, engines[0])
 
     if request.query:
         lang = request.query
@@ -130,7 +160,7 @@ def set(request, what, engine_name, other, text=""):
 
     return Response(Status.INPUT, "Enter the language (either language code or full name)")
 
-@app.route("/set_text/(?P<engine_name>\S+)/(?P<fr>\S+)/(?P<to>\S+)")
+@app.route("/set_text/(?P<engine_name>{})/(?P<fr>\S+)/(?P<to>\S+)".format(joined_engine_names))
 def set_text(request, engine_name, fr, to):
     print("to:", to)
     if request.query:
@@ -139,9 +169,9 @@ def set_text(request, engine_name, fr, to):
 
     return Response(Status.INPUT, "Enter the text you want to translate")
 
-@app.route("/supported_languages/(?P<engine_name>google|libre)")
+@app.route("/supported_languages/(?P<engine_name>{})".format(joined_engine_names))
 def show_supported_languages(request, engine_name):
-    engine = get_engine(engine_name, engines, google_translate_engine)
+    engine = get_engine(engine_name, engines, engines[0])
 
     lines = [
         page_header,
