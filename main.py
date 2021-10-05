@@ -195,7 +195,7 @@ def show_supported_languages(request, engine_name):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description='Gemini frontend for SimplyNews')
+    parser = argparse.ArgumentParser(description='Gemini frontend for SimplyTranslate')
     parser.add_argument('hostname', default='localhost', metavar='HOSTNAME', type=str)
     parser.add_argument('port', default=1956, metavar='PORT', type=int)
 
