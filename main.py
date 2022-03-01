@@ -73,7 +73,9 @@ def index(request, engine_name=engine_names[0], rest=""):
     engine = get_engine(engine_name, engines, engines[0])
 
     escaped_text = urllib.parse.quote(text)
-    supported_languages = engine.get_supported_languages()
+    supported_source_languages = engine.get_supported_source_languages()
+    supported_target_languages = engine.get_supported_target_languages()
+
     fr_name = to_full_name(fr, engine)
     to_name = to_full_name(to, engine)
 
@@ -118,7 +120,8 @@ def index(request, engine_name=engine_names[0], rest=""):
         "",
         "Translation Engine:",
         *engine_lines,
-        f"=> /supported_languages/{engine_name} List of supported languages",
+        f"=> /supported_source_languages/{engine_name} List of supported source languages",
+        f"=> /supported_target_languages/{engine_name} List of supported target languages",
         "",
         "Languages:",
         f"=> /set/from/{engine_name}/{to}/{escaped_text} From: {fr_name}",
@@ -173,25 +176,43 @@ def set_text(request, engine_name, fr, to):
 
     return Response(Status.INPUT, "Enter the text you want to translate")
 
-@app.route("/supported_languages/(?P<engine_name>{})".format(joined_engine_names))
-def show_supported_languages(request, engine_name):
+@app.route("/supported_source_languages/(?P<engine_name>{})".format(joined_engine_names))
+def show_supported_source_languages(request, engine_name):
     engine = get_engine(engine_name, engines, engines[0])
 
     lines = [
         page_header,
         "",
-        f"# Supported languages for {engine_name}",
+        f"# Supported source languages for {engine_name}",
         "",
     ]
 
-    supported_languages = engine.get_supported_languages()
+    supported_source_languages = engine.get_supported_source_languages()
 
-    for key in supported_languages.keys():
-        code = supported_languages[key]
+    for key in supported_source_languages.keys():
+        code = supported_source_languages[key]
         lines.append(f"{code}: {key}")
 
     return Response(Status.SUCCESS, 'text/gemini', '\n'.join(lines))
 
+@app.route("/supported_target_languages/(?P<engine_name>{})".format(joined_engine_names))
+def show_supported_target_languages(request, engine_name):
+    engine = get_engine(engine_name, engines, engines[0])
+
+    lines = [
+        page_header,
+        "",
+        f"# Supported target languages for {engine_name}",
+        "",
+    ]
+
+    supported_target_languages = engine.get_supported_target_languages()
+
+    for key in supported_target_languages.keys():
+        code = supported_target_languages[key]
+        lines.append(f"{code}: {key}")
+
+    return Response(Status.SUCCESS, 'text/gemini', '\n'.join(lines))
 
 if __name__ == "__main__":
     import argparse
